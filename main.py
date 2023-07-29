@@ -49,8 +49,8 @@ def get_dice_stats(count_rounds: int) -> list:
             cleaned = sort_out_1s_and_6s(curr_combinations)
             add_dice_stats(next_dice_stats, cleaned, comb_counts)
         dice_stats = next_dice_stats.copy()
-        print(f"[#]  Count of all possible Combinations: {sum(dice_stats)}")
-        print(f"[#]  Dice Stats >> {', '.join([str(i) +':' + str(d) for i, d in enumerate(dice_stats)])}")
+        print(f"[#]   Count of all possible Combinations: {sum(dice_stats)}")
+        print(f"[#]   Dice Stats >> {', '.join([str(i) +':' + str(d) for i, d in enumerate(dice_stats)])}")
     return dice_stats
 
 
@@ -87,35 +87,83 @@ def show_chart(counts):
     plt.show()
 
 
-def calc_sum(combinations):
+def calc_score(combinations):
     sums = {}
-    for comb in combinations:
+    for comb, count in combinations.items():
         sum1 = sum(comb)
         sum2 = sum([d if d != 1 else 100 for d in comb])  # count 1s as 100s
-        sums[comb] = (sum1, sum2)
+        sums[comb] = count, (sum1, sum2)
     return sums
+
+
+def compare_combinations(combinations):
+    # count by how many other combinations a given combination can be beaten
+    ranks = {}
+    for comb, (count, (as_1, as_100)) in combinations.items():
+        # can count 1s as 1s oder 100s -> 2,2,2 is the lowest when 1s as 100s, 6,6,6 is highest when 1s as 1s
+        lower_when_1_count = 0
+        lower_when_100_count = 0
+        higher_when_1_count = 0
+        higher_when_100_count = 0
+        for other_comb, (other_count, (other_as_1, other_as_100)) in combinations.items():
+            if comb == other_comb:
+                continue
+            if other_as_1 < as_1:
+                lower_when_1_count += count
+            if other_as_100 < as_100:
+                lower_when_100_count += count
+            if other_as_1 > as_1:
+                higher_when_1_count += count
+            if other_as_100 > as_100:
+                higher_when_100_count += count
+        ranks[comb] = lower_when_1_count, lower_when_100_count, higher_when_1_count, higher_when_100_count
+    return ranks
+
+
+def get_choices(combinations, strats, sum_of_combinations):
+    choices = {}
+    for comb, beaten_counts in combinations.items():
+        s = "Chance of losing, winning: "
+        c = min(beaten_counts)
+        i = beaten_counts.index(c)
+        losing_ratio = c / sum_of_combinations
+        for player_count in range(2, 6):  # calc chances for 2 to 6 players
+            # losing in 4 player game = none is worse -> 10% lost vs avg. -> 0.1 ** 3
+            # winning in 4 player game = none is better -> 90% win vs avg. -> 0.9 ** 3
+            chance_to_lose = str(round(losing_ratio ** (player_count - 1), 4))
+            chance_to_win = str(round((1-losing_ratio) ** (player_count - 1), 4))
+            s += chance_to_lose + ", " + chance_to_win + " / "
+        s = s[:-3]
+        choices[comb] = strats[i], s
+    return choices
 
 
 def main():
     # get dice left before last throw
     stats = get_dice_stats(rounds)
 
-    # get all possible combinations
-    count_combinations = get_final_combinations(stats)
-    sum_combinations = sum(count_combinations.values())
-    # show_chart(count_combinations)
+    # get all possible combinations and count it, e.g. > (2, 4, 6): 75264
+    combinations = get_final_combinations(stats)
+    sum_of_combinations = sum([count for count in combinations.values()])
+    print("[*] Round 3")
+    print("[#]   Count of all possible Combinations:", sum_of_combinations)
+    print("\n[*] Combinations:")
+    pprint(combinations)
 
-    # now calc possibilities of outcomes ([1, 1, 1], [1, 1, 2], ...) given the stats before last round
-    possibilities = {k: round(v / sum_combinations, 4) for k, v in count_combinations.items()}
-    print("\n[*] Calculated Possibilities:")
-    pprint(possibilities)
+    combinations_with_scores = calc_score(combinations)
+    print("\n[*] Combinations with Scores:")
+    pprint(combinations_with_scores)
 
-    # and show sums
-    sums = calc_sum(count_combinations)
-    print("\n[*] Calculated Sums:")
-    pprint(sums)
+    combinations_compared = compare_combinations(combinations_with_scores)
+    print("\n[*] Combinations Compared:")
+    pprint(combinations_compared)
 
-    # TODO find best strategy
+    strats = ["1s as   1s and lower ", "1s as 100s and lower ",
+              "1s as   1s and higher", "1s as 100s and higher"]
+    choice_per_combination = get_choices(combinations_compared, strats, sum_of_combinations)
+    print("\n[*] Combinations Strategy:")
+    for elem in choice_per_combination.items():
+        print(elem)
 
 
 if __name__ == "__main__":
